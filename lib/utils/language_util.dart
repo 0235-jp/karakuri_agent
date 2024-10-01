@@ -1,9 +1,8 @@
-import 'dart:io';
+import 'dart:ui' as ui;
 
 class LanguageUtil {
-    static String get isoLanguageCode {
-    String locale = Platform.localeName;
-    List<String> parts = locale.split('_');
-    return parts[0].split('.')[0];
+  static String get isoLanguageCode {
+    final locale = ui.PlatformDispatcher.instance.locale;
+    return locale.languageCode;
   }
 }

@@ -1,4 +1,4 @@
-import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:karakuri_agent/models/service_config.dart';
@@ -7,7 +7,6 @@ import 'package:karakuri_agent/providers/voice_activity_detection_provider.dart'
 import 'package:karakuri_agent/repositories/voice_activity_detaction_repository.dart';
 import 'package:karakuri_agent/services/speech_to_text/speech_to_text_openai_service.dart';
 import 'package:karakuri_agent/services/speech_to_text/speech_to_text_service.dart';
-import 'package:path_provider/path_provider.dart';
 
 class SpeechToTextRepository {
   final speechToTextResultProvider = StateProvider<String?>((ref) => null);
@@ -16,9 +15,6 @@ class SpeechToTextRepository {
   final String _model;
   late VoiceActivityDetectionRepository _voiceActivityDetectionRepository;
   late SpeechToTextService _service;
-
-  Future<File> get _audioFile async => await getApplicationCacheDirectory()
-      .then((value) => File('${value.path}/stt.wav'));
 
   SpeechToTextRepository(this._ref, this._serviceConfig, this._model);
 
@@ -49,8 +45,8 @@ class SpeechToTextRepository {
     _voiceActivityDetectionRepository.pause();
   }
 
-  Future<void> _createTranscription(List<int> audio) async {
-    final text = await _service.createTranscription(_model, await _audioFile);
+  Future<void> _createTranscription(Uint8List audio) async {
+    final text = await _service.createTranscription(_model, audio);
     _ref.read(speechToTextResultProvider.notifier).state = text;
   }
 }

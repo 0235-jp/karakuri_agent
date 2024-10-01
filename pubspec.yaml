@@ -21,7 +21,7 @@ dependencies:
   slang_flutter: ^3.31.0
   path_provider: ^2.1.4
   js: ^0.7.1
-  dart_openai: ^5.1.0
+  http: ^1.2.2
 
 dev_dependencies:
   flutter_test:
