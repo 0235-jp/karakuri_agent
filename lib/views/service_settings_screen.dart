@@ -2,7 +2,7 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:karakuri_agent/models/service_config.dart';
-import 'package:karakuri_agent/providers/service_settings_screen_viewmodel_provider.dart';
+import 'package:karakuri_agent/providers/viewmodels_provider.dart';
 import 'package:karakuri_agent/viewmodels/service_settings_screen_viewmodel.dart';
 import 'package:karakuri_agent/views/service_config_screen.dart';
 import 'package:karakuri_agent/i18n/strings.g.dart';
@@ -47,7 +47,7 @@ class _ServiceSettingsContent extends HookConsumerWidget {
               itemCount: configs.length,
               itemBuilder: (context, index) {
                 final config = configs[index];
-                return ServiceCard(
+                return _ServiceCard(
                   config: config,
                 );
               },
@@ -76,10 +76,10 @@ class _ServiceSettingsContent extends HookConsumerWidget {
   }
 }
 
-class ServiceCard extends HookConsumerWidget {
+class _ServiceCard extends HookConsumerWidget {
   final ServiceConfig config;
 
-  const ServiceCard({super.key, required this.config});
+  const _ServiceCard({super.key, required this.config});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {

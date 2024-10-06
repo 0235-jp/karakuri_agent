@@ -1,7 +1,15 @@
 {
   "appName": "からくりエージェント",
   "home": {
-    "title": "からくりエージェント"
+    "title": "からくりエージェント",
+    "agent": {
+      "name": "名前:${name}",
+      "agentAdd": "エージェントを追加",
+      "agentEdit": "エージェントを編集",
+      "textModel": "TEXTモデル:${name}",
+      "speechToTextModel": "SPEECH TO TEXTモデル:${name}",
+      "textToSpeechModel": "TEXT TO SPEECHモデル:${name}"
+    }
   },
   "settings": {
     "serviceSettings": {
@@ -28,7 +36,7 @@
           "name": "名前",
           "addModel": "モデルを追加"
         },
-        "sttConfig": {
+        "speechToTextConfig": {
           "configType": "SPEECH TO TEXT",
           "title": "SPEECH TO TEXT設定",
           "models": "モデル",
@@ -36,7 +44,7 @@
           "name": "名前",
           "addModel": "モデルを追加"
         },
-        "ttsConfig": {
+        "textToSpeechConfig": {
           "configType": "TEXT TO SPEECH",
           "title": "TEXT TO SPEECH",
           "voices": "ボイス",

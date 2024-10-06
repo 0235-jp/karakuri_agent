@@ -3,7 +3,7 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:karakuri_agent/models/config_type.dart';
 import 'package:karakuri_agent/models/service_config.dart';
 import 'package:karakuri_agent/models/service_type.dart';
-import 'package:karakuri_agent/providers/service_config_screen_viewmodel_provider.dart';
+import 'package:karakuri_agent/providers/viewmodels_provider.dart';
 import 'package:karakuri_agent/viewmodels/service_config_screen_viewmodel.dart';
 import 'package:karakuri_agent/i18n/strings.g.dart';
 
@@ -43,14 +43,14 @@ class ServiceConfigScreen extends HookConsumerWidget {
                 padding: const EdgeInsets.only(
                   bottom: 3,
                 ),
-                child: _STTConfigSection(viewModel: viewModel),
+                child: _SpeechToTextConfigSection(viewModel: viewModel),
               ),
             if (selectedType.capabilities.supportsTextToSpeech)
               Padding(
                 padding: const EdgeInsets.only(
                   bottom: 3,
                 ),
-                child: _TTSConfigSection(viewModel: viewModel),
+                child: _TextToSpeechConfigSection(viewModel: viewModel),
               ),
             const SizedBox(height: 20),
             ElevatedButton(
@@ -129,10 +129,10 @@ class _ServiceTypeDropdownSection extends HookConsumerWidget {
             viewModel.clearTextConfigModels();
           }
           if (!newValue.capabilities.supportsSpeechToText) {
-            viewModel.clearSTTConfigModels();
+            viewModel.clearSpeechToTextConfigModels();
           }
           if (!newValue.capabilities.supportsTextToSpeech) {
-            viewModel.clearTTSConfigVoices();
+            viewModel.clearTextToSpeechConfigVoices();
           }
           viewModel.updateServiceType(newValue);
         }
@@ -168,17 +168,17 @@ class _ToggleConfigSection extends StatelessWidget {
           if (configType == ConfigType.text) {
             viewModel.clearTextConfigModels();
           } else if (configType == ConfigType.stt) {
-            viewModel.clearSTTConfigModels();
+            viewModel.clearSpeechToTextConfigModels();
           } else if (configType == ConfigType.tts) {
-            viewModel.clearTTSConfigVoices();
+            viewModel.clearTextToSpeechConfigVoices();
           }
         } else {
           if (configType == ConfigType.text) {
             viewModel.addTextConfigModels();
           } else if (configType == ConfigType.stt) {
-            viewModel.addSTTConfigModels();
+            viewModel.addSpeechToTextConfigModels();
           } else if (configType == ConfigType.tts) {
-            viewModel.addTTSConfigVoices();
+            viewModel.addTextToSpeechConfigVoices();
           }
         }
       },
@@ -332,16 +332,16 @@ class _TextConfigSection extends HookConsumerWidget {
   }
 }
 
-class _STTConfigSection extends HookConsumerWidget {
+class _SpeechToTextConfigSection extends HookConsumerWidget {
   final ServiceConfigScreenViewmodel viewModel;
 
-  const _STTConfigSection({
+  const _SpeechToTextConfigSection({
     required this.viewModel,
   });
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final models = ref.watch(viewModel.sttConfigModelsProvider);
+    final models = ref.watch(viewModel.speechToTextConfigModelsProvider);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -352,16 +352,16 @@ class _STTConfigSection extends HookConsumerWidget {
         ),
         if (models.isNotEmpty)
           _ConfigSectionMap(
-            title: t.settings.serviceSettings.serviceConfig.sttConfig.models,
-            labelKey: t.settings.serviceSettings.serviceConfig.sttConfig.id,
-            labelValue: t.settings.serviceSettings.serviceConfig.sttConfig.name,
+            title: t.settings.serviceSettings.serviceConfig.speechToTextConfig.models,
+            labelKey: t.settings.serviceSettings.serviceConfig.speechToTextConfig.id,
+            labelValue: t.settings.serviceSettings.serviceConfig.speechToTextConfig.name,
             labelAdd:
-                t.settings.serviceSettings.serviceConfig.sttConfig.addModel,
+                t.settings.serviceSettings.serviceConfig.speechToTextConfig.addModel,
             map: models,
-            onAdd: viewModel.addSTTConfigModels,
+            onAdd: viewModel.addSpeechToTextConfigModels,
             onRemove: () {
               if (models.length > 1) {
-                viewModel.removeSTTConfigModelsAt(0);
+                viewModel.removeSpeechToTextConfigModelsAt(0);
               }
             },
           ),
@@ -370,16 +370,16 @@ class _STTConfigSection extends HookConsumerWidget {
   }
 }
 
-class _TTSConfigSection extends HookConsumerWidget {
+class _TextToSpeechConfigSection extends HookConsumerWidget {
   final ServiceConfigScreenViewmodel viewModel;
 
-  const _TTSConfigSection({
+  const _TextToSpeechConfigSection({
     required this.viewModel,
   });
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final voices = ref.watch(viewModel.ttsConfigVoicesProvider);
+    final voices = ref.watch(viewModel.textToSpeechConfigVoicesProvider);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -390,16 +390,16 @@ class _TTSConfigSection extends HookConsumerWidget {
         ),
         if (voices.isNotEmpty)
           _ConfigSectionMap(
-            title: t.settings.serviceSettings.serviceConfig.ttsConfig.voices,
-            labelKey: t.settings.serviceSettings.serviceConfig.ttsConfig.id,
-            labelValue: t.settings.serviceSettings.serviceConfig.ttsConfig.name,
+            title: t.settings.serviceSettings.serviceConfig.textToSpeechConfig.voices,
+            labelKey: t.settings.serviceSettings.serviceConfig.textToSpeechConfig.id,
+            labelValue: t.settings.serviceSettings.serviceConfig.textToSpeechConfig.name,
             labelAdd:
-                t.settings.serviceSettings.serviceConfig.ttsConfig.addVoice,
+                t.settings.serviceSettings.serviceConfig.textToSpeechConfig.addVoice,
             map: voices,
-            onAdd: viewModel.addTTSConfigVoices,
+            onAdd: viewModel.addTextToSpeechConfigVoices,
             onRemove: () {
               if (voices.length > 1) {
-                viewModel.removeTTSConfigVoicesAt(0);
+                viewModel.removeTextToSpeechConfigVoicesAt(0);
               }
             },
           ),

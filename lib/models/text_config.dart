@@ -1,27 +1,14 @@
-class TextConfig {
-  final List<Map<String, String>> models;
+import 'package:freezed_annotation/freezed_annotation.dart';
 
-  TextConfig({
-    required this.models,
-  });
+part 'text_config.freezed.dart';
+part 'text_config.g.dart';
 
-    TextConfig copyWith({
-    List<Map<String, String>>? models,
-  }) {
-    return TextConfig(
-      models: models ?? this.models,
-    );
-  }
+@freezed
+class TextConfig with _$TextConfig {
+  const factory TextConfig({
+    required List<(String, String)> models,
+  }) = _TextConfig;
 
-  Map<String, dynamic> toJson() => {
-    'models': models,
-  };
-
-  factory TextConfig.fromJson(Map<String, dynamic> json) {
-    var modelsData = json['models'] as List<dynamic>;
-    return TextConfig(
-      models:
-          modelsData.map((model) => Map<String, String>.from(model)).toList(),
-    );
-  }
+  factory TextConfig.fromJson(Map<String, dynamic> json) =>
+      _$TextConfigFromJson(json);
 }
