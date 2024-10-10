@@ -21,4 +21,11 @@ class ConfigStorageRepository {
         .map((jsonString) => ServiceConfig.fromJson(jsonDecode(jsonString)))
         .toList();
   }
+
+  Future<ServiceConfig?> loadConfig(String serviceId) async {
+    final configs = await loadConfigs();
+    // TODO 検索の実装
+    // return configs.firstWhere((config) => config.id == serviceId);
+    return configs.first;
+  }
 }
