@@ -4,6 +4,7 @@
     "title": "からくりエージェント",
     "agent": {
       "name": "名前:${name}",
+      "startTalk": "トークを開始",
       "addAgent": "+ エージェントを追加",
       "editAgent": "エージェントを編集",
       "deleteAgent": "エージェントを削除する",
