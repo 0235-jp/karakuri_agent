@@ -11,34 +11,45 @@ import 'package:karakuri_agent/utils/exception.dart';
 class OpenaiTextToSpeechService extends TextToSpeechService {
   final AgentConfig _agentConfig;
   final _player = AudioPlayer();
-  Completer<Uint8List?>? _cancelCompleter;
+  Completer<Uint8List?>? _synthesizeCompleter;
 
   OpenaiTextToSpeechService(this._agentConfig);
 
   @override
-  Future<void> speech(String text) async {
-    final completer = Completer();
-    _cancelCompleter = Completer();
-    final listen = _player.onPlayerComplete.listen((_) {
-      completer.complete();
-    });
+  Future<Uint8List> synthesize(String text) async {
+    _synthesizeCompleter = Completer();
     try {
       final bytes = await Future.any([
         _requestSpeech(text),
-        _cancelCompleter?.future ?? Future<Uint8List?>.value(null),
+        _synthesizeCompleter?.future ?? Future<Uint8List?>.value(null),
       ]);
       if (bytes == null) {
         throw CancellationException('OpenaiTextToSpeech');
       }
-      await _player.play(BytesSource(bytes), mode: PlayerMode.mediaPlayer);
-      await completer.future;
-    } on CancellationException {
-      rethrow;
+      return bytes;
     } catch (e) {
-      throw ServiceException(runtimeType.toString(), 'speech');
+      _synthesizeCompleter?.completeError(e);
+      rethrow;
+    } finally {
+      _synthesizeCompleter = null;
+    }
+  }
+
+  @override
+  Future<void> play(Uint8List audioData) async {
+    Completer<void>? playCompleter = Completer();
+    final listen = _player.onPlayerComplete.listen((_) {
+      playCompleter.complete();
+    });
+
+    try {
+      await _player.play(BytesSource(audioData), mode: PlayerMode.mediaPlayer);
+      await playCompleter.future;
+    } catch (e) {
+      playCompleter.completeError(e);
+      rethrow;
     } finally {
       listen.cancel();
-      _cancelCompleter = null;
     }
   }
 
@@ -50,6 +61,7 @@ class OpenaiTextToSpeechService extends TextToSpeechService {
 
   @override
   void dispose() {
+    _player.stop();
     _player.dispose();
     _cleanupCancelCompleter();
   }
@@ -88,9 +100,9 @@ class OpenaiTextToSpeechService extends TextToSpeechService {
   }
 
   void _cleanupCancelCompleter() {
-    if (_cancelCompleter?.isCompleted == false) {
-      _cancelCompleter?.complete(null);
+    if (_synthesizeCompleter?.isCompleted == false) {
+      _synthesizeCompleter?.complete(null);
     }
-    _cancelCompleter = null;
+    _synthesizeCompleter = null;
   }
 }
