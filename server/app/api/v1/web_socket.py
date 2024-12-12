@@ -5,7 +5,10 @@ import base64
 import io
 import json
 from pathlib import Path
-from fastapi import APIRouter, Depends, HTTPException
+import secrets
+import time
+from typing import Optional
+from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.websockets import WebSocket
 from jsonschema import ValidationError
@@ -14,18 +17,43 @@ from app.core.config import get_settings
 from app.dependencies import get_llm_service, get_stt_service, get_tts_service
 from app.schemas.web_socket import AudioRequest, AudioResponse, TextRequest, TextResponse
 from app.utils.audio import calculate_audio_duration, upload_to_storage
+from app.auth.api_key import get_api_key
 
-router = APIRouter()
 settings = get_settings()
 UPLOAD_DIR = settings.web_socket_audio_files_dir
 MAX_FILES = settings.web_socket_max_audio_files
 
+ws_tokens = {}
+TOKEN_LIFETIME = 10
+
+router = APIRouter()
+
+@router.get("/get_ws_token")
+async def get_ws_token(api_key: str = Depends(get_api_key)):
+    clean_expired_tokens()
+    token = secrets.token_urlsafe(16)
+    expire_at = time.time() + TOKEN_LIFETIME
+    ws_tokens[token] = (api_key, expire_at)
+    return {"token": token, "expire_in": TOKEN_LIFETIME}
+
 @router.websocket("")
-async def websocket_endpoint(websocket: WebSocket,
+async def websocket_endpoint(websocket: WebSocket, 
+    token: Optional[str] = Query(None),
     llm_service = Depends(get_llm_service),
     stt_service = Depends(get_stt_service),
     tts_service = Depends(get_tts_service)):
+    clean_expired_tokens()
+    if not token or token not in ws_tokens:
+        await websocket.close(code=1008)
+        return
+    api_key, expire_at = ws_tokens[token]
+    if time.time() > expire_at:
+        del ws_tokens[token]
+        await websocket.close(code=1008)
+        return
+    del ws_tokens[token]
     await websocket.accept()
+    await websocket.send_text(f"Hello! Connected with token associated to API key: {api_key}")
     agent_manager = get_agent_manager()
     while True:
         try:
@@ -96,7 +124,6 @@ async def websocket_endpoint(websocket: WebSocket,
             await websocket.close()
             break
 
-
 @router.get(f"/{UPLOAD_DIR}/{{file_path}}")
 async def get_audio(file_path: str):
     file_path = Path(f"{UPLOAD_DIR}/{file_path}.wav")
@@ -104,13 +131,19 @@ async def get_audio(file_path: str):
         raise HTTPException(status_code=404, detail="Audio file not found")
     return FileResponse(file_path)
 
+def clean_expired_tokens():
+    now = time.time()
+    expired = [t for t,(ak,exp) in ws_tokens.items() if exp < now]
+    for t in expired:
+        del ws_tokens[t]
+
 @router.get("/ws-test", response_class=HTMLResponse)
 def ws_test_page():
     initial_message = json.dumps({
         "request_type": "text",
         "responce_type": "text",
         "agent_id": "1",
-        "text": "こんにちは"
+        "text": "Hello."
     }, ensure_ascii=False, indent=2)
     return f"""
     <!DOCTYPE html>
@@ -118,33 +151,57 @@ def ws_test_page():
     <head><title>WebSocket Test</title></head>
     <body>
         <h1>WebSocket Test Page</h1>
+        <p>1. Access <code>/get_ws_token</code> with a valid <code>X-API-Key</code> header to obtain a token.</p>
+        <p>2. Enter the obtained token into the field below and click the "Connect" button.</p>
+        <p>3. Once connected, you can send the JSON message from the text area by clicking the "Send" button.</p>
+
         <div>
-            <p>以下のテキストエリアにJSONメッセージを入力し、"Send"ボタンで送信してください。</p>
-            <textarea id="msgInput" rows="10" cols="60">{initial_message}</textarea><br>
-            <button id="sendBtn">Send</button>
+            <input id="tokenInput" type="text" placeholder="Enter your token here" />
+            <button id="connectBtn">Connect</button>
         </div>
+        <hr>
+        <p>Enter the JSON message into the text area below and click "Send" to transmit it.</p>
+        <textarea id="msgInput" rows="10" cols="60">{initial_message}</textarea><br>
+        <button id="sendBtn" disabled>Send</button>
+
         <pre id="log"></pre>
         <script>
+            let ws = null;
             const logArea = document.getElementById('log');
             const protocol = (window.location.protocol === 'https:') ? 'wss:' : 'ws:';
-            const ws = new WebSocket(protocol + '//' + window.location.host + '/v1/ws');
 
-            ws.onopen = () => {{
-                logArea.textContent += "WebSocket connection opened\\n";
-            }};
+            document.getElementById('connectBtn').onclick = () => {{
+                const token = document.getElementById('tokenInput').value.trim();
+                if (!token) {{
+                    logArea.textContent += "Please enter a token\\n";
+                    return;
+                }}
+                const wsUrl = protocol + '//' + window.location.host + '/v1/ws?token=' + encodeURIComponent(token);
+                ws = new WebSocket(wsUrl);
 
-            ws.onmessage = (event) => {{
-                logArea.textContent += "Received: " + event.data + "\\n";
-            }};
+                ws.onopen = () => {{
+                    logArea.textContent += "WebSocket connection opened\\n";
+                    document.getElementById('sendBtn').disabled = false;
+                }};
 
-            ws.onclose = () => {{
-                logArea.textContent += "WebSocket connection closed\\n";
+                ws.onmessage = (event) => {{
+                    logArea.textContent += "Received: " + event.data + "\\n";
+                }};
+
+                ws.onclose = () => {{
+                    logArea.textContent += "WebSocket connection closed\\n";
+                    document.getElementById('sendBtn').disabled = true;
+                }};
             }};
 
             document.getElementById('sendBtn').onclick = () => {{
-                const msg = document.getElementById('msgInput').value;
-                ws.send(msg);
-                logArea.textContent += "Sent: " + msg + "\\n";
+                if (ws && ws.readyState === WebSocket.OPEN) {{
+                    const msg = document.getElementById('msgInput').value;
+                    ws.send(msg);
+                    logArea.textContent += "Sent: " + msg + "\\n";
+                }} else {{
+                    logArea.textContent += "WebSocket is not connected\\n";
+                }}
             }};
         </script>
     </body>
