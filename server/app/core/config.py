@@ -19,6 +19,8 @@ class Settings:
         self.line_audio_files_dir = str(os.getenv("LINE_AUDIO_FILES_DIR", "line_audio_files"))
         self.chat_max_audio_files = int(os.getenv("CHAT_MAX_AUDIO_FILES", "5"))
         self.chat_audio_files_dir = str(os.getenv("CHAT_AUDIO_FILES_DIR", "chat_audio_files"))
+        self.web_socket_max_audio_files = int(os.getenv("WEB_SOCKET_MAX_AUDIO_FILES", "5"))
+        self.web_socket_audio_files_dir = str(os.getenv("WEB_SOCKET_AUDIO_FILES_DIR", "chat_audio_files"))
     
     def get_agent_env(self, agent_id: int, key: str) -> str:
         return os.getenv(f"AGENT_{agent_id}_{key}")

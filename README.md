@@ -202,6 +202,8 @@ LINE_MAX_AUDIO_FILES=Max number of audio files for LINE integration (e.g., 5)
 LINE_AUDIO_FILES_DIR=line_audio_files
 CHAT_MAX_AUDIO_FILES=Max number of audio files for Chat endpoint (e.g., 5)
 CHAT_AUDIO_FILES_DIR=chat_audio_files
+WEB_SOCKET_MAX_AUDIO_FILES=Max number of audio files for web_socket endpoint (e.g., 5)
+WEB_SOCKET_AUDIO_FILES_DIR=web_socket_audio_files
 
 AGENT_1_NAME=Name of the agent
 AGENT_1_MESSAGE_GENERATE_LLM_BASE_URL=Base URL for message generation LLM (LiteLLM style)
