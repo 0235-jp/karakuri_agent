@@ -2,10 +2,12 @@
 # This file is licensed under the karakuri_agent Personal Use & No Warranty License.
 # Please see the LICENSE file in the project root.
 from fastapi import APIRouter, Depends, HTTPException, Request
+from httpx import AsyncClient
 from starlette.responses import FileResponse
 from app.core.llm_service import LLMService
 from app.core.tts_service import TTSService
-from app.dependencies import get_llm_service, get_tts_service
+from app.core.stt_service import STTService
+from app.dependencies import get_llm_service, get_stt_service, get_tts_service
 from app.utils.audio import calculate_audio_duration
 from pathlib import Path
 import os
@@ -14,24 +16,26 @@ from typing import List, cast
 from app.core.agent_manager import get_agent_manager
 from app.core.config import get_settings
 import logging
+from linebot import AsyncLineBotApi
 from linebot.v3.webhook import WebhookParser # type: ignore
 from linebot.v3.webhooks.models import Event # type: ignore
 from linebot.v3.messaging import ( # type: ignore
     AsyncApiClient,
     AsyncMessagingApi,
-    Configuration,
+    Configuration
 )
 from linebot.v3.messaging.models import ( # type: ignore
     ReplyMessageRequest,
     TextMessage,
-    AudioMessage
+    AudioMessage,
 )
 from linebot.v3.exceptions import ( # type: ignore
     InvalidSignatureError
 )
 from linebot.v3.webhooks import ( # type: ignore
     MessageEvent,
-    TextMessageContent
+    TextMessageContent,
+    AudioMessageContent
 )
 
 router = APIRouter()
@@ -45,7 +49,8 @@ async def handle_line_callback(
     request: Request,
     agent_id: str, 
     llm_service: LLMService = Depends(get_llm_service),
-    tts_service: TTSService = Depends(get_tts_service)
+    tts_service: TTSService = Depends(get_tts_service),
+    stt_service: STTService = Depends(get_stt_service)
 ):
     signature = request.headers['X-Line-Signature']
 
@@ -62,9 +67,10 @@ async def handle_line_callback(
         access_token=agent_config.line_channel_access_token
     )
     line_async_api_client = AsyncApiClient(configuration)
-    line_bot_api = AsyncMessagingApi(line_async_api_client)
+    line_messaging_api = AsyncMessagingApi(line_async_api_client)
+    line_bot_api = AsyncLineBotApi(agent_config.line_channel_access_token)
     line_parser = WebhookParser(agent_config.line_channel_secret)
-
+    
     try:
         events: List[Event] = cast(List[Event], line_parser.parse(body, signature))  # type: ignore
 
@@ -75,12 +81,21 @@ async def handle_line_callback(
         for event in events:
             if not isinstance(event, MessageEvent):
                 continue
-            if not isinstance(event.message, TextMessageContent):
+            print(event.message)
+            if isinstance(event.message, AudioMessageContent):
+                audio_content = await line_bot_api.get_message_content(event.message.id)
+                text_message = await stt_service.transcribe_audio(
+                    audio_content.content,
+                    agent_config
+                )
+            elif isinstance(event.message, TextMessageContent):
+                text_message = event.message.text
+            else:
                 continue
 
             llm_response = await llm_service.generate_response(
                 "line",
-                event.message.text, 
+                text_message, 
                 agent_config
             )
 
@@ -96,7 +111,7 @@ async def handle_line_callback(
             audio_url = await upload_to_storage(base_url, audio_data)
             duration = calculate_audio_duration(audio_data)
             
-            await line_bot_api.reply_message( # type: ignore
+            await line_messaging_api.reply_message( # type: ignore
                 ReplyMessageRequest(
                     reply_token=event.reply_token, # type: ignore
                     messages=[
@@ -116,6 +131,18 @@ async def handle_line_callback(
             status_code=500,
             detail=f"Error processing request: {str(e)}"
         )
+
+async def get_audio(message_id: str) -> bytes:
+    async with AsyncClient() as client:
+        response = await client.get(event.message.content_provider.original_content_url)
+        if response.status_code == 200:
+            audio_content = response.content
+        else:
+            raise HTTPException(
+                status_code=500,
+                detail=f"Failed to download audio file: {response.status_code}"
+            )
+
 
 async def upload_to_storage(base_url: str, audio_data: bytes) -> str:
     Path(UPLOAD_DIR).mkdir(parents=True, exist_ok=True)
