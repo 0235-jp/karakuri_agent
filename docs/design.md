@@ -66,7 +66,75 @@ app/
 
 ### 3.3 エージェントの状態管理
 
+#### 3.3.0 APIエンドポイント
+
+| エンドポイント | メソッド | 説明 |
+|--------------|---------|------|
+| `/v1/agents/{agent_id}/status` | GET | エージェントの現在のステータスを取得 |
+| `/v1/agents/{agent_id}/status` | PUT | エージェントのステータスを更新 |
+| `/v1/agents/{agent_id}/schedule` | GET | エージェントの当日のスケジュールを取得 |
+| `/v1/agents/{agent_id}/availability` | GET | 各コミュニケーションチャンネルの利用可否を取得 |
+
+リクエスト・レスポンス例：
+
+```json
+// GET /v1/agents/1/status
+{
+    "current_status": "available",
+    "last_status_change": "2024-01-01T12:00:00",
+    "next_status_change": "2024-01-01T22:00:00",
+    "status_message": "通常対応可能です"
+}
+
+// PUT /v1/agents/1/status
+Request:
+"working"
+
+Response:
+{
+    "current_status": "working",
+    "last_status_change": "2024-01-01T13:00:00",
+    "next_status_change": null,
+    "status_message": "作業中ですが、チャットでの対応は可能です"
+}
+
+// GET /v1/agents/1/schedule
+{
+    "date": "2024-01-01",
+    "items": [
+        {
+            "start_time": "08:00",
+            "end_time": "12:00",
+            "activity": "通常業務",
+            "status": "available",
+            "description": "メールチェックと一般的な問い合わせ対応",
+            "location": "オフィス"
+        },
+        {
+            "start_time": "12:00",
+            "end_time": "13:00",
+            "activity": "昼食",
+            "status": "eating",
+            "description": "昼食休憩",
+            "location": "カフェテリア"
+        }
+    ],
+    "generated_at": "2024-01-01T07:30:00",
+    "last_updated": "2024-01-01T07:30:00"
+}
+
+// GET /v1/agents/1/availability
+{
+    "chat": true,
+    "voice": false,
+    "video": false
+}
+```
+
 #### 3.3.1 ステータスと利用可能なコミュニケーション
+
+エージェントの状態に応じて、利用可能なコミュニケーションチャンネルが定義されています。
+
 ```python
 class CommunicationChannel(str, Enum):
     CHAT = "chat"          # Text-based communication (LINE, etc.)
@@ -74,30 +142,93 @@ class CommunicationChannel(str, Enum):
     VIDEO = "video"        # Video communication (for future expansion)
 
 class AgentStatus(str, Enum):
-    AVAILABLE = "available"     # Free and ready to interact
-    SLEEPING = "sleeping"       # Currently sleeping
-    EATING = "eating"          # Having a meal
-    WORKING = "working"        # Working on tasks but can handle chat
-    OUT = "out"               # Outside/Away but can handle chat
-    MAINTENANCE = "maintenance" # System maintenance mode
+    AVAILABLE = "available"    # 通常対応可能
+    SLEEPING = "sleeping"      # 睡眠中
+    EATING = "eating"         # 食事中
+    WORKING = "working"       # 作業中（チャット可）
+    OUT = "out"              # 外出中（チャット可）
+    MAINTENANCE = "maintenance" # メンテナンス中
+
+# 各状態での利用可能なコミュニケーションチャンネル
+STATUS_AVAILABILITY = {
+    AgentStatus.AVAILABLE: {"chat": True, "voice": True, "video": True},
+    AgentStatus.SLEEPING: {"chat": False, "voice": False, "video": False},
+    AgentStatus.EATING: {"chat": True, "voice": False, "video": False},
+    AgentStatus.WORKING: {"chat": True, "voice": False, "video": False},
+    AgentStatus.OUT: {"chat": True, "voice": False, "video": False},
+    AgentStatus.MAINTENANCE: {"chat": False, "voice": False, "video": False},
+}
 ```
 
-各ステータスでのコミュニケーション可否：
-| ステータス | チャット | 音声 | ビデオ |
-|-----------|---------|------|--------|
-| AVAILABLE | ✅ | ✅ | ✅ |
-| SLEEPING | ❌ | ❌ | ❌ |
-| EATING | ✅ | ❌ | ❌ |
-| WORKING | ✅ | ❌ | ❌ |
-| OUT | ✅ | ❌ | ❌ |
-| MAINTENANCE | ❌ | ❌ | ❌ |
+#### 3.3.2 スケジュール管理
+
+エージェントの1日のスケジュールを管理し、それに基づいて状態を自動的に更新します。
+
+```python
+class ScheduleItem(BaseModel):
+    start_time: str          # HH:MM形式
+    end_time: str           # HH:MM形式
+    activity: str           # 活動内容
+    status: AgentStatus     # この時間帯での状態
+    description: Optional[str] = None  # 詳細説明
+    location: Optional[str] = None     # 場所
+
+class DailySchedule(BaseModel):
+    date: date              # スケジュールの日付
+    items: List[ScheduleItem]  # スケジュール項目
+    generated_at: datetime   # スケジュール生成日時
+    last_updated: datetime   # 最終更新日時
+
+class AgentScheduleConfig(BaseModel):
+    timezone: str = "Asia/Tokyo"
+    wake_time: str = "08:00"
+    sleep_time: str = "22:00"
+    meal_times: List[dict[str, str]] = [
+        {"start": "12:00", "end": "13:00"},  # 昼食
+        {"start": "19:00", "end": "20:00"},  # 夕食
+    ]
+    custom_schedules: List[dict] = []  # 特別なイベントや予定
+```
+
+#### 3.3.3 ステータスコンテキスト
+
+エージェントの応答生成時に、現在の状態や予定に関する情報を提供するためのコンテキスト。
+
+```python
+class StatusContext(BaseModel):
+    available: bool          # 現在のチャンネルが利用可能か
+    current_time: datetime   # エージェントのローカル時間
+    current_status: str      # 現在の状態
+    current_schedule: Optional[ScheduleItem]  # 現在の予定
+    next_schedule: Optional[ScheduleItem]     # 次の利用可能な予定
+```
+
+#### 3.3.4 環境変数の設定
+
+エージェントのスケジュール管理に関する設定は環境変数で指定します。
+
+```env
+# スケジュール生成用LLM設定
+AGENT_1_SCHEDULE_GENERATE_LLM_BASE_URL=
+AGENT_1_SCHEDULE_GENERATE_LLM_API_KEY=
+AGENT_1_SCHEDULE_GENERATE_LLM_MODEL=
+
+# エージェントのスケジュール設定
+AGENT_1_TIMEZONE=Asia/Tokyo
+AGENT_1_WAKE_TIME=08:00
+AGENT_1_SLEEP_TIME=22:00
+AGENT_1_MEAL_TIMES=[{"start":"12:00","end":"13:00"},{"start":"19:00","end":"20:00"}]
+AGENT_1_CUSTOM_SCHEDULES=[]
+```
+
+
+
+
 
 #### 3.3.2 スケジュール管理
-- 起床30分前に自動的に当日のスケジュールを生成
-- LLMを使用した動的なスケジュール作成
-- エージェントの性格や役割に基づいた活動の設定
 
-スケジュールデータ構造：
+エージェントの1日のスケジュールを管理し、それに基づいて状態を自動的に更新します。
+
 ```python
 class ScheduleItem(BaseModel):
     start_time: str

@@ -23,6 +23,7 @@ from app.schemas.emotion import Emotion
 from app.schemas.llm import LLMResponse
 from app.core.config import get_settings
 from app.core.memory_service import conversation_history_lock
+from app.schemas.schedule import StatusContext
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
@@ -46,12 +47,26 @@ Required JSON format:
 
     async def generate_response(
         self,
-        message_type: str,
         message: str,
         agent_config: AgentConfig,
+        status_context: StatusContext,
         image: Optional[bytes] = None,
     ) -> LLMResponse:
         async with conversation_history_lock:
+            if not status_context.available:
+                status_response = await self.generate_status_response(
+                    context=status_context,
+                    agent_config=agent_config,
+                    user_message=message,
+                )
+
+                return LLMResponse(
+                    user_message=message,
+                    agent_message=status_response,
+                    emotion="neutral",
+                )
+
+            # If available, proceed with normal response generation
             conversation_history = await memory_service.get_conversation_history(
                 agent_config.id
             )
@@ -227,3 +242,109 @@ Required JSON format:
         except (json.JSONDecodeError, ValueError) as e:
             logger.error(f"Error parsing emotion response: {str(e)}")
             return Emotion.NEUTRAL.value
+
+    async def generate_schedule(
+        self,
+        prompt: str,
+        agent_config: AgentConfig,
+    ) -> str:
+        """Generate a daily schedule using LLM"""
+        system_prompt = """
+        You are a schedule generator for an AI agent. Create a detailed daily schedule considering the following aspects:
+
+        Key Considerations:
+        1. Activities should align with the agent's personality and role
+        2. Include appropriate break times
+        3. Allocate realistic time frames
+        4. Account for travel time between locations
+        5. Maintain consistency with the agent's established patterns
+
+        Required Output Format:
+        {
+            "schedule": [
+                {
+                    "start_time": "HH:MM",
+                    "end_time": "HH:MM",
+                    "activity": "Brief activity description",
+                    "status": "AVAILABLE|SLEEPING|EATING|WORKING|OUT|MAINTENANCE",
+                    "description": "Detailed description of the activity",
+                    "location": "Location of the activity"
+                }
+            ]
+        }
+
+        Guidelines:
+        - Times must be in 24-hour format (HH:MM)
+        - Status must match one of the defined status types
+        - Activities should be specific and meaningful
+        - Descriptions should provide context for the activity
+        - Locations should be specific when relevant
+
+        Note: Ensure the schedule maintains a natural flow and includes necessary transition times between activities.
+        """
+
+        messages = [
+            ChatCompletionSystemMessage(role="system", content=system_prompt),
+            ChatCompletionUserMessage(role="user", content=prompt),
+        ]
+
+        response = await acompletion(
+            base_url=agent_config.schedule_generate_llm_base_url,
+            api_key=agent_config.schedule_generate_llm_api_key,
+            model=agent_config.schedule_generate_llm_model,
+            messages=messages,
+            response_format={"type": "json_object"},
+        )
+        return self.get_message_content(response)
+
+    async def generate_status_response(
+        self, context: StatusContext, agent_config: AgentConfig, user_message: str
+    ) -> str:
+        """Generate contextual status response"""
+        # TODO: デフォルト値
+        system_prompt = """
+        You are an AI agent responding to a user about your current availability. 
+        Craft a natural, contextual response based on your current status and schedule.
+
+        Guidelines:
+        1. Be polite and empathetic
+        2. Explain your current status/activity naturally
+        3. Provide clear information about when you'll be available next
+        4. If you're partially available (e.g., can respond to chat but not voice), explain this
+        5. Match the tone and style to your character/personality
+        6. Keep the response concise but informative
+
+        The response must be tailored to the language of user_message.
+        """
+
+        user_prompt = f"""
+        Current Context:
+        - Current time: {context.current_time}
+        - Current status: {context.current_status}
+        - Current activity: {context.current_schedule.activity if context.current_schedule else  ""}
+        - Location: {context.current_schedule.location if context.current_schedule else  ""}
+        - Next available time: {context.next_schedule.start_time if context.next_schedule else  ""}
+
+        User's message: {user_message}
+
+        Character Profile:
+        {agent_config.llm_system_prompt}
+
+        Generate a natural response explaining your current status and availability.
+        """
+
+        messages = [
+            ChatCompletionSystemMessage(
+                role="system",
+                content=system_prompt,
+            ),
+            ChatCompletionUserMessage(role="user", content=user_prompt),
+        ]
+
+        response = await acompletion(
+            base_url=agent_config.message_generate_llm_base_url,
+            api_key=agent_config.message_generate_llm_api_key,
+            model=agent_config.message_generate_llm_model,
+            messages=messages,
+        )
+        return self.get_message_content(response)
